@@ -31,10 +31,12 @@ def load_records(datadir):
                 k = (data.get('tableID'), data.get('gameShoe'), data.get('gameRound'))
                 if k[2] is not None:
                     bets[k].append((ts, data.get('betCount'), data.get('currentBet')))
-            elif t == 'roadInfo' and data.get('gameRound') is not None:
-                k = (data['tableID'], data['gameShoe'], data['gameRound'])
+            elif t == 'roadInfo':
+                ri = data.get('roadInfo') if isinstance(data.get('roadInfo'), dict) else data
+                if ri.get('gameRound') is None: continue
+                k = (ri.get('tableID'), ri.get('gameShoe'), ri.get('gameRound'))
                 if k not in roads: order.append(k)
-                roads[k] = data.get('winCounts')
+                roads[k] = ri.get('winCounts')
     # 连局差分得每局结果: 同靴相邻局 winCounts 增量索引 = 赢家
     seq = defaultdict(list)  # (tid, shoe) -> sorted rounds
     for (tid, shoe, rnd) in roads: seq[(tid, shoe)].append(rnd)
