@@ -1,0 +1,24 @@
+name: smoke
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: statistical battery on rigged synthetic
+        run: |
+          python3 tools/make_synthetic.py --mode rigged
+          python3 src/forensics.py --bets data/synthetic_bets.json | tee out.txt
+          grep -q "显著偏低" out.txt
+      - name: oracle detects planted rule / stays flat on fair
+        run: |
+          python3 tools/make_roads_synthetic.py --mode rigged
+          python3 src/prophet.py --data data/roads/ | tee o1.txt
+          grep -q "非随机" o1.txt
+          python3 tools/make_roads_synthetic.py --mode fair
+          python3 src/prophet.py --data data/roads/ | tee o2.txt
+          grep -q "未达显著" o2.txt
+      - name: unit checks
+        run: python3 tests/test_units.py
