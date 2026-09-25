@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""make_synthetic.py — 生成合成投注记录(两种模式: fair / rigged), 供管线复现与检验力演示
+"""make_synthetic.py — synthetic bet history (fair / rigged modes) for pipeline reproduction
   fair:   胜率 ~0.507, 独立
   rigged: 首日 0.49 → 之后 0.30, 输后加注倍投, 输赢成串(正自相关)
 """
@@ -32,7 +32,7 @@ def gen(mode, n_days=24, rounds_per_day=(30, 400), out='data/synthetic_bets.json
             if not win: payoff = -amt
             bets.append({
                 "Id": 14000000000+idx, "GameCategory": "SE CASINO",
-                "GameName": "Baccarat classic",
+                "GameName": "Live table A",
                 "WagersTime": f"/Date({int(ts)})/",
                 "BetAmount": round(amt, 2), "Commissionable": round(amt*(0.95 if win and payoff > 0 and rng.random() < 0.6 else 1.0), 2),
                 "Payoff": round(payoff, 2)})

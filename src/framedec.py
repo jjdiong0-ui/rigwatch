@@ -45,7 +45,7 @@ def parse_game_event(j):
     }
 
 def card_points(v):
-    """牌值 0-51 -> 百家乐点数: (v+1)%13, r=0 记 10, J/Q/K(r>=10) 记 0"""
+    """Card value 0-51 -> hand points: (v+1)%13, r=0 counts 10, J/Q/K (r>=10) count 0."""
     r = (v+1) % 13
     if r == 0: r = 13
     return r if r <= 9 else 0

@@ -16,9 +16,9 @@ jobs:
         run: |
           python3 tools/make_roads_synthetic.py --mode rigged
           python3 src/prophet.py --data data/roads/ | tee o1.txt
-          grep -q "非随机" o1.txt
+          grep -q "not random" o1.txt
           python3 tools/make_roads_synthetic.py --mode fair
           python3 src/prophet.py --data data/roads/ | tee o2.txt
-          grep -q "未达显著" o2.txt
+          grep -q "consistent with a fair platform" o2.txt
       - name: unit checks
         run: python3 tests/test_units.py

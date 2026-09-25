@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""make_roads_synthetic.py — 合成大厅广播流(roadInfo+betInfo), 植入"押注量→结果"规则
+"""make_roads_synthetic.py — synthetic hall broadcast (roadInfo+betInfo) with a planted volume->outcome rule
 供 src/prophet.py 端到端自检: 公平平台跑分应≈50%, 植入规则后应被 RIG-SCORE 检出。
 """
 import json, random, argparse, os, datetime
@@ -21,7 +21,7 @@ for shoe in range(1, a.shoes+1):
         if a.mode == 'rigged':
             wi = 0 if rng.random() < (0.7 if bet > 1500 else 0.4) else rng.choice([1, 2])
         else:
-            # 真实百家乐边际: 和≈9.5%, 庄≈45.9%, 闲≈44.6%
+            # real-world marginals: tie~9.5%, banker~45.9%, player~44.6%
             u = rng.random()
             wi = 2 if u < 0.095 else (0 if u < 0.095+0.459 else 1)
         wc[wi] += 1

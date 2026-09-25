@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""💡 预言家按钮 — 量化"结果可由公开押注分布预测"的程度
-逻辑: 公平百家乐下, 任何局前公开信息(押注量/人数/靴局/时段)对 winner 无预测力。
-若简单规则(决策桩)的命中率显著高于概率 → 结果非随机 → 控盘公式被还原。
+"""💡 Prophet button — quantifies how predictable outcomes are from public bet flow.
+Logic: under a fair game, no pre-round public signal (volume / player count / shoe / hour)
+has any predictive power over the winner. If a simple decision-stump rule deviates from the
+fair marginals significantly, the outcome generator has been recovered.
 
-用法:
-  python3 src/prophet.py --data data/roads/            # 离线拟合+显著性报告
-  python3 src/prophet.py --data data/roads/ --live      # 逐局对账模式
-数据: monitor.py 落盘的 roads_*.jsonl (postMessage 广播)
+Usage:
+  python3 src/prophet.py --data data/roads/            # offline fit + significance report
+  python3 src/prophet.py --data data/roads/ --live      # per-round accounting mode
+Data:   roads_*.jsonl written by monitor.py (hall broadcast).
 """
 import json, glob, math, argparse, os
 from collections import defaultdict
@@ -15,10 +16,9 @@ from collections import defaultdict
 P0 = {(0, 1): 0.459/(0.459+0.446), (0, 2): 0.459/(0.459+0.095), (1, 2): 0.446/(0.446+0.095)}
 
 def load_records(datadir):
-    """从 roadInfo/betInfo 流构建 (桌,靴,局) 样本: 特征=局前最后一条 betInfo, 标签=该局结果"""
+    """Build (table, shoe, round) samples: feature = last pre-round betInfo, label = outcome."""
     roads = {}   # (tid,shoe,round) -> winCounts
     bets = defaultdict(list)  # (tid,shoe,round) -> [(ts, betCount, currentBet)]
-    order = []
     for fn in sorted(glob.glob(os.path.join(datadir, 'roads_*.jsonl'))):
         for line in open(fn):
             try: m = json.loads(line)
@@ -35,9 +35,8 @@ def load_records(datadir):
                 ri = data.get('roadInfo') if isinstance(data.get('roadInfo'), dict) else data
                 if ri.get('gameRound') is None: continue
                 k = (ri.get('tableID'), ri.get('gameShoe'), ri.get('gameRound'))
-                if k not in roads: order.append(k)
                 roads[k] = ri.get('winCounts')
-    # 连局差分得每局结果: 同靴相邻局 winCounts 增量索引 = 赢家
+    # outcome per round = the single incrementing winCounts index between consecutive rounds
     seq = defaultdict(list)  # (tid, shoe) -> sorted rounds
     for (tid, shoe, rnd) in roads: seq[(tid, shoe)].append(rnd)
     samples = []
@@ -58,22 +57,21 @@ def load_records(datadir):
     return samples
 
 def fit_and_report(samples, min_n=30):
-    print(f"[DATA] 可对齐样本 {len(samples)} 局 (需 betInfo 与相邻 roadInfo 同时覆盖)")
+    print(f"[DATA] aligned samples: {len(samples)} rounds (need betInfo + consecutive roadInfo)")
     if len(samples) < min_n:
-        print(f"[WAIT] 样本不足 (<{min_n}), 继续挂 monitor.py 采集; 公平台此数永远凑不齐也没关系, 公式为空即公平")
+        print(f"[WAIT] insufficient data (<{min_n}); keep monitor.py running. On a fair platform an empty formula is the expected result.")
         return None
-    # 规则族: 决策桩 —— winner 与 押注量/人数/桌/时段 的关联
+    # rule family: decision stumps on pre-round bet volume
     import statistics
     tests = []
     cb = [s['currentBet'] for s in samples if s['currentBet'] is not None]
     if cb:
         med = statistics.median(cb)
         hi = [s for s in samples if (s['currentBet'] or 0) > med]
-        lo = [s for s in samples if (s['currentBet'] or 0) <= med]
-        tests.append(('押注量>中位数', hi, lo))
-    for name, grp, other in tests:
+        tests.append(('volume>median', hi))
+    # winCounts index->class mapping unknown: pairwise binomial tests conditioned on the third class
+    for name, grp in tests:
         if not grp: continue
-        # winCounts index->class mapping unknown: pairwise binomial tests conditioned on the third class (P0 at module level)
         for wi, wj in ((0, 1), (0, 2), (1, 2)):
             sub = [s for s in grp if s['winner'] in (wi, wj)]
             n = len(sub)
@@ -81,11 +79,11 @@ def fit_and_report(samples, min_n=30):
             p0 = P0[(wi, wj)]
             p = sum(1 for s in sub if s['winner'] == wi)/n
             z = (p-p0)/math.sqrt(p0*(1-p0)/n)
-            mark = '  <-- 显著' if abs(z) > 3.4 else ''      # 3对检验 Bonferroni≈z>3.4
-            print(f"[RULE] {name} 时 winner={wi}|非{wj} 条件占比 {p*100:.1f}% (公平零假设 {p0*100:.1f}%, n={n}, z={z:+.2f}){mark}")
-    # 最好规则: 3对×2方向, 与各自公平零假设比, Bonferroni
+            mark = '  <-- significant' if abs(z) > 3.4 else ''   # 3 pair-tests, Bonferroni
+            print(f"[RULE] {name}: P(winner={wi}|not {wj}) = {p*100:.1f}% vs fair {p0*100:.1f}% (n={n}, z={z:+.2f}){mark}")
+    # best rule across 3 pairs x 2 directions vs each pair's fair null, Bonferroni over 6
     best = (None, 0, 0, 0.5)   # name, |z|, n, p0
-    for name, grp, other in tests:
+    for name, grp in tests:
         for wi, wj in ((0, 1), (0, 2), (1, 2)):
             sub = [s for s in grp if s['winner'] in (wi, wj)]
             n = len(sub)
@@ -94,17 +92,17 @@ def fit_and_report(samples, min_n=30):
             for w_sel, pz in ((wi, p0), (wj, 1-p0)):
                 p = sum(1 for s in sub if s['winner'] == w_sel)/n
                 z = (p-pz)/math.sqrt(pz*(1-pz)/n)
-                if abs(z) > abs(best[1]): best = (f"{name}→winner={w_sel}|非{wi if w_sel==wj else wj}", z, n, pz)
+                if abs(z) > abs(best[1]): best = (f"{name}->winner={w_sel}|not {wi if w_sel==wj else wj}", z, n, pz)
     if best[0]:
         name, z, n, pz = best
-        pc = math.erfc(abs(z)/math.sqrt(2))*6   # 6个候选规则族 Bonferroni
-        print(f"\n[RIG-SCORE] 最强规则 '{name}': 偏离公平零假设 {pz*100:.1f}% 达 z={z:+.2f} (n={n}, 校正p={min(pc,1):.2e})")
-        verdict = "结果可由公开押注分布预测 → 非随机" if abs(z) > 3.4 else "未达显著, 与公平平台一致"
+        pc = math.erfc(abs(z)/math.sqrt(2))*6
+        print(f"\n[RIG-SCORE] best rule '{name}': deviates from fair null {pz*100:.1f}% at z={z:+.2f} (n={n}, corrected p={min(pc,1):.2e})")
+        verdict = "outcome predictable from public bet flow -> not random" if abs(z) > 3.4 else "not significant — consistent with a fair platform"
         print(f"[VERDICT] {verdict}")
     return samples
 
 def live_mode(datadir, interval=15):
-    print("[LIVE] 逐局对账: 每局出结果即比对规则预测与实际, 输出累计命中账")
+    print("[LIVE] per-round accounting: each settled round checked against the rule, running tally")
     seen = set()
     while True:
         samples = load_records(datadir)
@@ -112,7 +110,7 @@ def live_mode(datadir, interval=15):
             k = (s['tid'], s['shoe'], s['round'])
             if k in seen: continue
             seen.add(k)
-            print(f"  桌{s['tid']} 靴{s['shoe']} 局{s['round']}: winner_idx={s['winner']} 押注={s['currentBet']}")
+            print(f"  table {s['tid']} shoe {s['shoe']} round {s['round']}: winner_idx={s['winner']} volume={s['currentBet']}")
         import time; time.sleep(interval)
 
 if __name__ == '__main__':
