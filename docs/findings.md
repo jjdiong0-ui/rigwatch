@@ -8,7 +8,7 @@ best rule deviation from fair marginals: z = +0.99 (Bonferroni-corrected p = 1.0
 VERDICT: not significant — consistent with a fair platform
 ```
 
-The studio's *publicly broadcast* results are statistically indistinguishable from fair baccarat.
+The studio's *publicly broadcast* results are statistically indistinguishable from the fair marginals.
 
 ## Why that is the strongest finding, not a negative result
 
